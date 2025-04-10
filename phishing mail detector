@@ -1,0 +1,96 @@
+import pandas as pd
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+
+# Sample dataset (in practice, use a larger real-world dataset)
+data = {
+    "email": [
+        "Urgent: Your account has been compromised. Click here: http://fake-login.com to reset your password.",
+        "Hi John, meeting at 10 AM tomorrow. See you there!",
+        "You’ve won $1,000! Claim it now at http://scam-site.com/winner",
+        "Your PayPal account needs verification. Login here: http://paypal-fake.com",
+        "Reminder: Your subscription renews tomorrow. Thanks!",
+        "Click this link http://malicious.com to claim your free gift!",
+        "Team lunch today at noon. Bring your ideas!",
+        "Bank alert: Suspicious activity detected. Verify now: http://fakebank.com",
+    ],
+    "label": [1, 0, 1, 1, 0, 1, 0, 1]  # 1 = phishing, 0 = legitimate
+}
+
+# Convert to DataFrame
+df = pd.DataFrame(data)
+
+# Preprocessing function
+def preprocess_text(text):
+    # Convert to lowercase
+    text = text.lower()
+    # Remove URLs (basic regex)
+    text = re.sub(r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+", "url", text)
+    # Tokenize
+    tokens = word_tokenize(text)
+    # Remove stopwords and non-alphabetic tokens
+    stop_words = set(stopwords.words("english"))
+    tokens = [word for word in tokens if word.isalpha() and word not in stop_words]
+    return " ".join(tokens)
+
+# Apply preprocessing
+df["processed_email"] = df["email"].apply(preprocess_text)
+
+# Feature extraction using TF-IDF
+vectorizer = TfidfVectorizer(max_features=100)  # Limit to top 100 features
+X = vectorizer.fit_transform(df["processed_email"]).toarray()
+y = df["label"]
+
+# Split data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Train Naive Bayes classifier
+model = MultinomialNB()
+model.fit(X_train, y_train)
+
+# Evaluate the model
+y_pred = model.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
+print(f"Model Accuracy: {accuracy * 100:.2f}%")
+
+# Function to detect phishing in new emails
+def detect_phishing(email, vectorizer, model):
+    processed_email = preprocess_text(email)
+    email_vector = vectorizer.transform([processed_email]).toarray()
+    prediction = model.predict(email_vector)[0]
+    probability = model.predict_proba(email_vector)[0]
+    return "Phishing" if prediction == 1 else "Legitimate", max(probability) * 100
+
+# Test the detector
+def main():
+    print("Phishing Email Detector")
+    print("----------------------")
+    
+    while True:
+        email = input("Enter an email text to analyze (or 'quit' to exit): ")
+        if email.lower() == "quit":
+            break
+        
+        result, confidence = detect_phishing(email, vectorizer, model)
+        print(f"\nResult: {result}")
+        print(f"Confidence: {confidence:.2f}%\n")
+
+if __name__ == "__main__":
+    # Show sample predictions from the dataset
+    print("Sample Predictions from Training Data:")
+    for i in range(len(df)):
+        email = df["email"][i]
+        result, confidence = detect_phishing(email, vectorizer, model)
+        actual = "Phishing" if df["label"][i] == 1 else "Legitimate"
+        print(f"Email: {email}")
+        print(f"Predicted: {result} ({confidence:.2f}%), Actual: {actual}\n")
+    
+    # Run the interactive detector
+    main()
